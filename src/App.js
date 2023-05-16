@@ -1,50 +1,271 @@
-import React, { Component } from "react"
-import logo from "./logo.svg"
-import "./App.css"
 
-class LambdaDemo extends Component {
-  constructor(props) {
-    super(props)
-    this.state = { loading: false, msg: null }
-  }
 
-  handleClick = api => e => {
-    e.preventDefault()
+import React, { useState, useEffect } from "react";
+import { Box, TextField, Button } from "@mui/material";
+import { Sandpack, SandpackProvider, SandpackLayout, SandpackCodeEditor, SandpackPreview } from "@codesandbox/sandpack-react";
+import { monokaiPro } from "@codesandbox/sandpack-themes";;
 
-    this.setState({ loading: true })
-    fetch("/.netlify/functions/" + api)
-      .then(response => response.json())
-      .then(json => this.setState({ loading: false, msg: json.msg }))
-  }
 
-  render() {
-    const { loading, msg } = this.state
 
-    return (
+const API_KEY = process.env.REACT_APP_API_KEY;
+
+const initialCode = `import React, { useState } from 'react';
+
+export default function App() {
+  const [buttonClicked, setButtonClicked] = useState(false);
+
+  const handleButtonClick = () => {
+    setButtonClicked(true);
+  };
+
+  const containerStyle = {
+    backgroundImage: 'linear-gradient(to right, #6a11cb, #2575fc)',
+    minHeight: '100vh',
+    display: 'flex',
+    flexDirection: 'column',
+    justifyContent: 'center',
+    alignItems: 'center',
+    textAlign: 'center',
+    padding: '2rem',
+    color: 'white',
+
+  };
+
+  const buttonStyle = {
+    background: 'white',
+    color: 'blue',
+    padding: '0.5rem 1rem',
+    borderRadius: '5px',
+    cursor: 'pointer',
+    fontSize: '1rem',
+    fontWeight: 'bold',
+    marginTop: '1rem',
+  };
+
+  return (
+    <div style={containerStyle}>
+      <h1>Welcome to Our Website</h1>
       <p>
-        <button onClick={this.handleClick("hello")}>{loading ? "Loading..." : "Call Lambda"}</button>
-        <button onClick={this.handleClick("async-dadjoke")}>{loading ? "Loading..." : "Call Async Lambda"}</button>
-        <br />
-        <span>{msg}</span>
+        We provide top-notch services and solutions for our customers. Explore our offerings and find the best fit for your needs!
       </p>
-    )
-  }
+      <button onClick={handleButtonClick} style={buttonStyle}>
+        {buttonClicked ? 'Thanks for clicking!' : 'Learn More'}
+      </button>
+    </div>
+  );
+
+}
+`;
+
+function App() {
+  const [code, setCode] = useState(initialCode);
+  const [chatInput, setChatInput] = useState("");
+  const [messages, setMessages] = useState([]);
+  const [isWaitingForResponse, setIsWaitingForResponse] = useState(false);
+  const [previousCode, setPreviousCode] = useState("");
+  const [editorWidth, setEditorWidth] = useState('50%');
+  const [showFullResponse, setShowFullResponse] = useState(false);
+  const chatHistoryRef = React.useRef(null);
+  const windowHeight = window.innerHeight;
+  const chatboxHeight = 200;
+
+  const applyCode = (newCode) => {
+  setPreviousCode(code);
+  setCode(newCode);
+  };
+  
+  const revertCode = () => {
+    if (previousCode) {
+      setCode(previousCode);
+      setPreviousCode("");
+    } else {
+      alert("No previous code to revert to.");
+    }
+  };
+
+  const toggleFullResponse = (index) => {
+    setMessages(messages.map((message, i) => {
+      if(i === index) {
+        return {...message, showFullResponse: !message.showFullResponse};
+      } else {
+        return message;
+      }
+    }));
+  };
+
+  const onDrag = (e, ui) => {
+    const newWidth = ui.node.previousSibling.clientWidth + ui.deltaX;
+    setEditorWidth(`${newWidth}px`);
+  };
+
+  const callChatGptApi = async (prompt) => {
+    try {
+      const formattedPrompt = `I want to build a web application. My current code is:\n${code}\n\nUser: ${prompt}\n\nChatGPT, please provide me the code to achieve this, answer with full code:`;
+
+      const response = await fetch('https://api.openai.com/v1/engines/text-davinci-003/completions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${API_KEY}`,
+        },
+        body: JSON.stringify({
+          prompt: formattedPrompt,
+          max_tokens: 2000,
+          n: 1,
+          stop: null,
+          temperature: 0.5,
+          top_p: 1,
+          frequency_penalty: 0,
+          presence_penalty: 0,
+        }),
+      });
+
+      const data = await response.json();
+
+      if (data.choices && data.choices.length > 0) {
+        const chatGptResponse = data.choices[0].text.trim();
+        setMessages(prevMessages => [...prevMessages, { sender: 'ChatGPT', text: chatGptResponse, showFullResponse: false }]);
+        setIsWaitingForResponse(false);
+      }
+    } catch (error) {
+      console.error('Error calling ChatGPT API:', error);
+      setIsWaitingForResponse(false);
+    }
+  };
+
+  const handleChatSubmit = async (e) => {
+    e.preventDefault();
+    setMessages([...messages, { sender: "user", text: chatInput, showFullResponse: false }]);
+    setChatInput("");
+    setIsWaitingForResponse(true);
+    await callChatGptApi(chatInput);
+  };
+
+  const liveComponentStyle = {
+    height: '100%',
+    overflow: 'auto',
+  };
+  
+  useEffect(() => {
+    if (chatHistoryRef.current) {
+      const { scrollHeight } = chatHistoryRef.current;
+      chatHistoryRef.current.scrollTo(0, scrollHeight);
+    }
+  }, [messages]);
+
+
+ return (
+    <div style={{ display: "flex", flexDirection: "column", height: "100vh" }}>
+      <SandpackProvider>
+        <div style={{ display: "flex", height: windowHeight - chatboxHeight }}>
+          <div id="editor" style={{ position: "relative", flex: 1 }}>
+            <SandpackLayout>
+              <Sandpack 
+                template="react"
+                theme={monokaiPro}
+
+                code={code}
+                updateCode={newCode => setCode(newCode)}
+                files={{
+
+                        "/App.js": {code},
+
+                    }}
+                options={{ 
+
+                  editorHeight: windowHeight - chatboxHeight,
+                  
+                }}
+
+                customSetup={{ 
+                  dependencies: { 
+                    
+                   "@mui/material": "latest"
+                    
+                    
+                  }
+                }}
+              >
+                <SandpackCodeEditor />
+
+              </Sandpack>
+            </SandpackLayout>
+          </div>
+        </div>
+    
+      </SandpackProvider>
+      <Box display="flex" flexDirection="column" height={chatboxHeight} border={1} borderColor="grey.300">
+        <Box flexGrow={1} p={1} overflow="auto" style={{ maxHeight: "calc(100% - 56px)" }} ref={chatHistoryRef}>
+          {messages.map((message, index) => (
+            <div key={index} style={{ marginBottom: "0.5rem" }}>
+              <strong>{message.sender}:</strong>
+              {message.sender !== "ChatGPT" && message.text}
+              {message.sender === "ChatGPT" && (
+                <>
+                  <Button
+                    variant="outlined"
+                    color="primary"
+                    size="small"
+                    onClick={() => applyCode(message.text)}
+                    style={{ marginLeft: "1rem" }}
+                  >
+                    Apply Code
+                  </Button>
+                  <Button
+                    variant="outlined"
+                    color="primary"
+                    size="small"
+                    onClick={() => toggleFullResponse(index)}
+                    style={{ marginLeft: "0.5rem" }}
+                  >
+                    {message.showFullResponse ? "Hide Full Response" : "Show Full Response"}
+                  </Button>
+                  {message.showFullResponse && (
+                    <pre style={{ whiteSpace: "pre-wrap", marginTop: "0.5rem" }}>
+                      {message.text}
+                    </pre>
+                  )}
+                </>
+              )}
+            </div>
+          ))}
+          {isWaitingForResponse && (
+            <div>
+              <strong>ChatGPT:</strong> thinking...
+            </div>
+          )}
+        </Box>
+        <form onSubmit={handleChatSubmit}>
+          <Box display="flex" p={1}>
+            <TextField
+              fullWidth
+              value={chatInput}
+              onChange={(e) => setChatInput(e.target.value)}
+              variant="outlined"
+              size="small"
+              label="Type your message"
+            />
+            <Button type="submit" variant="contained" color="primary" style={{ marginLeft: "1rem" }}>
+              Send
+            </Button>
+            <Button
+              variant="contained"
+              color="secondary"
+              style={{ marginLeft: "1rem" }}
+              onClick={revertCode}
+            >
+              Revert Code
+            </Button>
+          </Box>
+        </form>
+      </Box>
+    </div>
+  );
 }
 
-class App extends Component {
-  render() {
-    return (
-      <div className="App">
-        <header className="App-header">
-          <img src={logo} className="App-logo" alt="logo" />
-          <p>
-            Edit <code>src/App.js</code> and save to reload.
-          </p>
-          <LambdaDemo />
-        </header>
-      </div>
-    )
-  }
-}
+export default App;
 
-export default App
+
+
+
+
